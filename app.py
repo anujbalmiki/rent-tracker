@@ -111,7 +111,6 @@ def analyze_transactions(df):
     
     return analysis
 
-
 # Function to update the transaction in the database
 def update_transaction(transaction_id, new_date, new_amount, new_remark):
     # Connect to the SQLite database
@@ -137,13 +136,60 @@ def delete_transaction(transaction_id):
 # Initialize the database
 init_db()
 
+# Add this to the start of your code
+import hashlib
+
+# Hardcoded users (username: hashed_password)
+USERS = {
+    "admin": hashlib.sha256("admin123".encode()).hexdigest(),
+}
+
+def authenticate_user(username, password):
+    hashed_password = hashlib.sha256(password.encode()).hexdigest()
+    return USERS.get(username) == hashed_password
+
+def login():
+    st.sidebar.subheader("Login")
+    
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+    
+    if st.session_state.logged_in:
+        st.sidebar.write(f"Logged in as: **{st.session_state.username}**")
+        if st.sidebar.button("Logout"):
+            st.session_state.logged_in = False
+            st.experimental_rerun()
+    else:
+        username = st.sidebar.text_input("Username")
+        password = st.sidebar.text_input("Password", type="password")
+        if st.sidebar.button("Login"):
+            if authenticate_user(username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.sidebar.success("Login successful!")
+                st.experimental_rerun()
+            else:
+                st.sidebar.error("Invalid username or password!")
+
+# Call login function
+login()
+
+# Restrict access to functionalities based on login status
+if st.session_state.logged_in:
+    page = st.sidebar.selectbox("Select Page", ["Add Transaction", "View Transactions", "Generate Report", "Import CSV"])
+else:
+    page = "View Transactions"
+    st.sidebar.info("Login to access more functionalities.")
+    
+    
 # Streamlit UI
-st.title("🏠 Rent Tracker")
+# st.title("🏠 Rent Tracker")
 
 # Sidebar for navigation
-page = st.sidebar.selectbox("Select Page", ["Import CSV", "Add Transaction", "View Transactions", "Generate Report"])
+# page = st.sidebar.selectbox("Select Page", ["Add Transaction", "View Transactions", "Generate Report", "Import CSV"])
 
-if page == "Import CSV":
+if page == "Import CSV" and st.session_state.logged_in:
     st.header("Import CSV Data")
     
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
@@ -163,7 +209,7 @@ if page == "Import CSV":
                 if os.path.exists("temp.csv"):
                     os.remove("temp.csv")
 
-elif page == "Add Transaction":
+elif page == "Add Transaction" and st.session_state.logged_in:
     st.header("Add New Transaction")
     
     with st.form("transaction_form"):
@@ -184,58 +230,61 @@ elif page == "View Transactions":
     df = get_transactions()
     
     if not df.empty:
-        # Allow editing in a separate section
-        st.subheader("Edit Transactions")
-        edited_df = st.data_editor(
-            df,
-            hide_index=True,
-            key="edit_transactions_table"
-        )
+        # Allow editing and deleting only if logged in
+        if st.session_state.logged_in:
+            # Allow editing in a separate section
+            st.subheader("Edit Transactions")
+            edited_df = st.data_editor(
+                df,
+                hide_index=True,
+                key="edit_transactions_table"
+            )
 
-        # Check if any row was edited
-        if not df.equals(edited_df):
-            # Loop over rows to check which ones were edited
-            for index, row in edited_df.iterrows():
-                original_row = df.loc[df['id'] == row['id']].iloc[0]
-                if (row['amount'] != original_row['amount'] or 
-                    row['remark'] != original_row['remark'] or
-                    row['date'] != original_row['date']):
-                    # Update the transaction in the database if edited
-                    update_transaction(row['id'], row['date'], row['amount'], row['remark'])
-                    st.success(f"Transaction ID {row['id']} updated successfully!")
-                    st.rerun()
+            # Check if any row was edited
+            if not df.equals(edited_df):
+                # Loop over rows to check which ones were edited
+                for index, row in edited_df.iterrows():
+                    original_row = df.loc[df['id'] == row['id']].iloc[0]
+                    if (row['amount'] != original_row['amount'] or 
+                        row['remark'] != original_row['remark'] or
+                        row['date'] != original_row['date']):
+                        # Update the transaction in the database if edited
+                        update_transaction(row['id'], row['date'], row['amount'], row['remark'])
+                        st.success(f"Transaction ID {row['id']} updated successfully!")
+                        st.rerun()
+                        
+            
+            # Create a multiselect for choosing records to delete
+            transaction_options = [f"ID: {row['id']} - Date: {row['date']} - Amount: ₹{row['amount']} - {row['remark']}" 
+                                for _, row in df.iterrows()]
+            selected_transactions = st.multiselect(
+                "Select transactions to delete:",
+                options=transaction_options
+            )
+            
+            # Add delete button for selected records
+            if st.button("Delete Selected Records", type="primary"):
+                if selected_transactions:
+                    # Extract IDs from selected transactions
+                    selected_ids = [int(trans.split(' - ')[0].replace('ID: ', '')) for trans in selected_transactions]
                     
-        
-        # Create a multiselect for choosing records to delete
-        transaction_options = [f"ID: {row['id']} - Date: {row['date']} - Amount: ₹{row['amount']} - {row['remark']}" 
-                             for _, row in df.iterrows()]
-        selected_transactions = st.multiselect(
-            "Select transactions to delete:",
-            options=transaction_options
-        )
-        
-        # Add delete button for selected records
-        if st.button("Delete Selected Records", type="primary"):
-            if selected_transactions:
-                # Extract IDs from selected transactions
-                selected_ids = [int(trans.split(' - ')[0].replace('ID: ', '')) for trans in selected_transactions]
-                
-                # Delete selected records
-                conn = sqlite3.connect('rent_tracker.db')
-                cursor = conn.cursor()
-                cursor = conn.cursor()
-                
-                for record_id in selected_ids:
-                    cursor.execute("DELETE FROM transactions WHERE id = ?", (record_id,))
-                
-                conn.commit()
-                conn.close()
-                
-                st.success(f"Successfully deleted {len(selected_ids)} record(s)!")
-                st.rerun()
-            else:
-                st.warning("Please select at least one record to delete.")
-
+                    # Delete selected records
+                    conn = sqlite3.connect('rent_tracker.db')
+                    cursor = conn.cursor()
+                    cursor = conn.cursor()
+                    
+                    for record_id in selected_ids:
+                        cursor.execute("DELETE FROM transactions WHERE id = ?", (record_id,))
+                    
+                    conn.commit()
+                    conn.close()
+                    
+                    st.success(f"Successfully deleted {len(selected_ids)} record(s)!")
+                    st.rerun()
+                else:
+                    st.warning("Please select at least one record to delete.")
+        else:
+            st.dataframe(df)
     else:
         st.write("No transactions available.")
     
@@ -285,7 +334,7 @@ elif page == "View Transactions":
         st.plotly_chart(light_fig)
 
 
-elif page == "Generate Report":
+elif page == "Generate Report" and st.session_state.logged_in:
     st.header("Generate Report")
     
     col1, col2 = st.columns(2)
