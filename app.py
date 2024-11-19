@@ -20,7 +20,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 def parse_csv_data(csv_path):
     # Read CSV with proper date parsing
     df = pd.read_csv(csv_path)
@@ -159,7 +158,7 @@ def login():
         st.sidebar.write(f"Logged in as: **{st.session_state.username}**")
         if st.sidebar.button("Logout"):
             st.session_state.logged_in = False
-            st.experimental_rerun()
+            st.rerun()
     else:
         username = st.sidebar.text_input("Username")
         password = st.sidebar.text_input("Password", type="password")
@@ -168,7 +167,7 @@ def login():
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.sidebar.success("Login successful!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.sidebar.error("Invalid username or password!")
 
@@ -181,13 +180,6 @@ if st.session_state.logged_in:
 else:
     page = "View Transactions"
     st.sidebar.info("Login to access more functionalities.")
-    
-    
-# Streamlit UI
-# st.title("🏠 Rent Tracker")
-
-# Sidebar for navigation
-# page = st.sidebar.selectbox("Select Page", ["Add Transaction", "View Transactions", "Generate Report", "Import CSV"])
 
 if page == "Import CSV" and st.session_state.logged_in:
     st.header("Import CSV Data")
@@ -209,6 +201,7 @@ if page == "Import CSV" and st.session_state.logged_in:
                 if os.path.exists("temp.csv"):
                     os.remove("temp.csv")
 
+
 elif page == "Add Transaction" and st.session_state.logged_in:
     st.header("Add New Transaction")
     
@@ -222,7 +215,7 @@ elif page == "Add Transaction" and st.session_state.logged_in:
             add_transaction(date.strftime('%Y-%m-%d'), amount, remark)
             st.success("Transaction added successfully!")
 
-# In the View Transactions page
+
 elif page == "View Transactions":
     st.header("Transaction History")
     
@@ -367,6 +360,7 @@ elif page == "Generate Report" and st.session_state.logged_in:
                 file_name=f"rent_report_{start_date}_{end_date}.csv",
                 mime="text/csv"
             )
+
 
 # Add CSS for better styling
 st.markdown("""
