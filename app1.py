@@ -2,111 +2,146 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-from pymongo import MongoClient
-from bson.objectid import ObjectId
+import sqlite3
 import os
-import hashlib
 
-# MongoDB connection setup
-uri = "mongodb+srv://admin:admin123@mankhurdrent.j49t7.mongodb.net/?retryWrites=true&w=majority&appName=MankhurdRent"
-client = MongoClient(uri)
-db = client["rent_tracker"]
-transactions_collection = db["transactions"]
+# Initialize SQLite database
+def init_db():
+    conn = sqlite3.connect('rent_tracker.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS transactions
+        (id INTEGER PRIMARY KEY AUTOINCREMENT,
+         date TEXT NOT NULL,
+         amount REAL NOT NULL,
+         remark TEXT,
+         running_total REAL)
+    ''')
+    conn.commit()
+    conn.close()
 
-# Parse CSV Data
 def parse_csv_data(csv_path):
+    # Read CSV with proper date parsing
     df = pd.read_csv(csv_path)
-    df["Date"] = pd.to_datetime(df["Date"], format="%d-%m-%Y").dt.strftime("%Y-%m-%d")
-    df["Amount"] = pd.to_numeric(df["Amount"])
-    df = df.rename(columns={"Date": "date", "Amount": "amount", "Remark": "remark"})
-    df = df.sort_values("date")
+    
+    # Convert date to consistent format
+    df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y').dt.strftime('%Y-%m-%d')
+    
+    # Ensure amount is numeric
+    df['Amount'] = pd.to_numeric(df['Amount'])
+    
+    # Rename columns to match database structure
+    df = df.rename(columns={
+        'Date': 'date',
+        'Amount': 'amount',
+        'Remark': 'remark'
+    })
+    
+    # Sort by date
+    df = df.sort_values('date')
+    
     return df
 
-# Import CSV to MongoDB
 def import_csv_to_db(csv_path):
+    conn = sqlite3.connect('rent_tracker.db')
+    c = conn.cursor()
+    
+    # Clear existing data
+    c.execute('DELETE FROM transactions')
+    
+    # Parse and import CSV data
     df = parse_csv_data(csv_path)
-    transactions_collection.delete_many({})
+    
+    # Calculate running total
     running_total = 0
     for _, row in df.iterrows():
-        running_total += row["amount"]
-        transaction = {
-            "date": row["date"],
-            "amount": row["amount"],
-            "remark": row["remark"],
-            "running_total": running_total,
-        }
-        transactions_collection.insert_one(transaction)
+        running_total += row['amount']
+        c.execute('INSERT INTO transactions (date, amount, remark, running_total) VALUES (?, ?, ?, ?)',
+                 (row['date'], row['amount'], row['remark'], running_total))
+    
+    conn.commit()
+    conn.close()
 
-# Add Transaction
 def add_transaction(date, amount, remark):
-    last_transaction = transactions_collection.find_one(sort=[("date", -1)])
-    running_total = (last_transaction["running_total"] if last_transaction else 0) + amount
-    transaction = {
-        "date": date,
-        "amount": amount,
-        "remark": remark,
-        "running_total": running_total,
-    }
-    transactions_collection.insert_one(transaction)
+    conn = sqlite3.connect('rent_tracker.db')
+    c = conn.cursor()
+    
+    c.execute('SELECT running_total FROM transactions ORDER BY date DESC LIMIT 1')
+    last_total = c.fetchone()
+    running_total = (last_total[0] if last_total else 0) + amount
+    
+    c.execute('INSERT INTO transactions (date, amount, remark, running_total) VALUES (?, ?, ?, ?)',
+              (date, amount, remark, running_total))
+    conn.commit()
+    conn.close()
 
-# Get Transactions
 def get_transactions():
-    transactions = list(transactions_collection.find())
-    df = pd.DataFrame(transactions)
-    if not df.empty:
-        df["id"] = df["_id"].apply(str)
-        df.drop(columns=["_id"], inplace=True)
+    conn = sqlite3.connect('rent_tracker.db')
+    df = pd.read_sql_query('SELECT * FROM transactions ORDER BY date DESC', conn)
+    conn.close()
     return df
 
-# Generate Report
 def generate_report(start_date, end_date):
-    query = {"date": {"$gte": start_date, "$lte": end_date}}
-    transactions = list(transactions_collection.find(query))
-    return pd.DataFrame(transactions)
+    conn = sqlite3.connect('rent_tracker.db')
+    query = '''
+    SELECT * FROM transactions 
+    WHERE date BETWEEN ? AND ?
+    ORDER BY date
+    '''
+    df = pd.read_sql_query(query, conn, params=[start_date, end_date])
+    conn.close()
+    return df
 
-# Analyze Transactions
 def analyze_transactions(df):
-    rent_entries = df[df["remark"].str.contains("Rent", na=False)]
-    light_bill_entries = df[df["remark"].str.contains("Light Bill", na=False)]
-    payments = df[df["remark"].str.contains("Payment", na=False)]
+    """Generate detailed analysis of transactions"""
+    rent_entries = df[df['remark'].str.contains('Rent', na=False)]
+    light_bill_entries = df[df['remark'].str.contains('Light Bill', na=False)]
+    payments = df[df['remark'].str.contains('Payment', na=False)]
+    
     analysis = {
-        "total_rent": rent_entries["amount"].sum(),
-        "total_light_bills": light_bill_entries["amount"].sum(),
-        "total_payments": abs(payments["amount"].sum()),
-        "avg_monthly_rent": rent_entries["amount"].mean(),
-        "avg_light_bill": light_bill_entries["amount"].mean(),
-        "num_payments": len(payments),
-        "current_balance": df["running_total"].iloc[-1] if not df.empty else 0,
+        'total_rent': rent_entries['amount'].sum(),
+        'total_light_bills': light_bill_entries['amount'].sum(),
+        'total_payments': abs(payments['amount'].sum()),
+        'avg_monthly_rent': rent_entries['amount'].mean(),
+        'avg_light_bill': light_bill_entries['amount'].mean(),
+        'num_payments': len(payments),
+        'current_balance': df['running_total'].iloc[0] if not df.empty else 0
     }
+    
     return analysis
 
-# Update Transaction
+# Function to update the transaction in the database
 def update_transaction(transaction_id, new_date, new_amount, new_remark):
-    transaction = transactions_collection.find_one({"_id": ObjectId(transaction_id)})
-    if transaction:
-        old_amount = transaction["amount"]
-        difference = new_amount - old_amount
-        transactions_collection.update_one(
-            {"_id": ObjectId(transaction_id)},
-            {"$set": {"date": new_date, "amount": new_amount, "remark": new_remark}},
-        )
+    # Connect to the SQLite database
+    conn = sqlite3.connect('rent_tracker.db')
+    cursor = conn.cursor()
+    query = """
+    UPDATE transactions
+    SET date = ?, amount = ?, remark = ?
+    WHERE id = ?
+    """
+    cursor.execute(query, (new_date, new_amount, new_remark, transaction_id))
+    conn.commit()
 
-        # Recalculate running totals
-        cursor = transactions_collection.find(sort=[("date", 1)])
-        running_total = 0
-        for doc in cursor:
-            running_total += doc["amount"]
-            transactions_collection.update_one(
-                {"_id": doc["_id"]}, {"$set": {"running_total": running_total}}
-            )
-
-# Delete Transaction
+# Function to delete a transaction from the database
 def delete_transaction(transaction_id):
-    print(transaction_id)
-    transactions_collection.delete_one({"_id": ObjectId(transaction_id)})
+    # Connect to the SQLite database
+    conn = sqlite3.connect('rent_tracker.db')
+    cursor = conn.cursor()
+    query = "DELETE FROM transactions WHERE id = ?"
+    cursor.execute(query, (transaction_id,))
+    conn.commit()
 
-# User Authentication
-USERS = {"admin": hashlib.sha256("admin123".encode()).hexdigest()}
+# Initialize the database
+init_db()
+
+# Add this to the start of your code
+import hashlib
+
+# Hardcoded users (username: hashed_password)
+USERS = {
+    "admin": hashlib.sha256("admin123".encode()).hexdigest(),
+}
 
 def authenticate_user(username, password):
     hashed_password = hashlib.sha256(password.encode()).hexdigest()
@@ -114,9 +149,11 @@ def authenticate_user(username, password):
 
 def login():
     st.sidebar.subheader("Login")
+    
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.username = ""
+    
     if st.session_state.logged_in:
         st.sidebar.write(f"Logged in as: **{st.session_state.username}**")
         if st.sidebar.button("Logout"):
@@ -134,43 +171,50 @@ def login():
             else:
                 st.sidebar.error("Invalid username or password!")
 
-# Application Logic
+# Call login function
 login()
+
+# Restrict access to functionalities based on login status
 if st.session_state.logged_in:
-    page = st.sidebar.selectbox(
-        "Select Page",
-        ["Add Transaction", "View Transactions", "Generate Report", "Import CSV"],
-    )
+    page = st.sidebar.selectbox("Select Page", ["Add Transaction", "View Transactions", "Generate Report", "Import CSV"])
 else:
     page = "View Transactions"
     st.sidebar.info("Login to access more functionalities.")
 
 if page == "Import CSV" and st.session_state.logged_in:
     st.header("Import CSV Data")
+    
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
         if st.button("Import Data"):
+            # Save the uploaded file temporarily
             with open("temp.csv", "wb") as f:
                 f.write(uploaded_file.getvalue())
+            
             try:
                 import_csv_to_db("temp.csv")
                 st.success("CSV data imported successfully!")
             except Exception as e:
                 st.error(f"Error importing CSV: {str(e)}")
             finally:
+                # Clean up temporary file
                 if os.path.exists("temp.csv"):
                     os.remove("temp.csv")
 
+
 elif page == "Add Transaction" and st.session_state.logged_in:
     st.header("Add New Transaction")
+    
     with st.form("transaction_form"):
         date = st.date_input("Date", datetime.today())
         amount = st.number_input("Amount", step=100.0)
         remark = st.text_input("Remark")
+        
         submitted = st.form_submit_button("Add Transaction")
         if submitted:
-            add_transaction(date.strftime("%Y-%m-%d"), amount, remark)
+            add_transaction(date.strftime('%Y-%m-%d'), amount, remark)
             st.success("Transaction added successfully!")
+
 
 elif page == "View Transactions":
     st.header("Transaction History")
@@ -211,25 +255,25 @@ elif page == "View Transactions":
                 options=transaction_options
             )
             
-            ## Add delete button for selected records
+            # Add delete button for selected records
             if st.button("Delete Selected Records", type="primary"):
                 if selected_transactions:
-                    try:
-                        # Extract ObjectId from selected transactions
-                        selected_ids = [
-                            ObjectId(trans.split(" - ")[0].replace("ID: ", ""))
-                            for trans in selected_transactions
-                        ]
-                        
-                        print(selected_ids)
-                        # Perform deletion
-                        for record_id in selected_ids:
-                            delete_transaction(record_id)
-
-                        st.success(f"Successfully deleted {len(selected_ids)} record(s)!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"An error occurred during deletion: {e}")
+                    # Extract IDs from selected transactions
+                    selected_ids = [int(trans.split(' - ')[0].replace('ID: ', '')) for trans in selected_transactions]
+                    
+                    # Delete selected records
+                    conn = sqlite3.connect('rent_tracker.db')
+                    cursor = conn.cursor()
+                    cursor = conn.cursor()
+                    
+                    for record_id in selected_ids:
+                        cursor.execute("DELETE FROM transactions WHERE id = ?", (record_id,))
+                    
+                    conn.commit()
+                    conn.close()
+                    
+                    st.success(f"Successfully deleted {len(selected_ids)} record(s)!")
+                    st.rerun()
                 else:
                     st.warning("Please select at least one record to delete.")
         else:
@@ -257,9 +301,9 @@ elif page == "View Transactions":
         
         # Plot transaction history
         fig = px.line(df.sort_values('date'), 
-                    x='date', 
-                    y='running_total',
-                    title='Balance History')
+                     x='date', 
+                     y='running_total',
+                     title='Balance History')
         st.plotly_chart(fig)
         
         # Plot monthly breakdown
@@ -267,9 +311,9 @@ elif page == "View Transactions":
         monthly_rent = df[df['remark'].str.contains('Rent', na=False)].copy()
         monthly_rent['month'] = pd.to_datetime(monthly_rent['date']).dt.strftime('%Y-%m')
         monthly_fig = px.bar(monthly_rent.groupby('month')['amount'].sum().reset_index(),
-                        x='month',
-                        y='amount',
-                        title='Monthly Rent')
+                           x='month',
+                           y='amount',
+                           title='Monthly Rent')
         st.plotly_chart(monthly_fig)
         
         # Light bill trends
@@ -277,9 +321,9 @@ elif page == "View Transactions":
         light_bills = df[df['remark'].str.contains('Light Bill', na=False)].copy()
         light_bills['month'] = pd.to_datetime(light_bills['date']).dt.strftime('%Y-%m')
         light_fig = px.line(light_bills.sort_values('date'),
-                        x='date',
-                        y='amount',
-                        title='Light Bill Trends')
+                          x='date',
+                          y='amount',
+                          title='Light Bill Trends')
         st.plotly_chart(light_fig)
 
 
@@ -294,7 +338,7 @@ elif page == "Generate Report" and st.session_state.logged_in:
     
     if st.button("Generate Report"):
         report_df = generate_report(start_date.strftime('%Y-%m-%d'), 
-                                end_date.strftime('%Y-%m-%d'))
+                                  end_date.strftime('%Y-%m-%d'))
         
         if not report_df.empty:
             analysis = analyze_transactions(report_df)
@@ -316,3 +360,24 @@ elif page == "Generate Report" and st.session_state.logged_in:
                 file_name=f"rent_report_{start_date}_{end_date}.csv",
                 mime="text/csv"
             )
+
+
+# Add CSS for better styling
+st.markdown("""
+    <style>
+        .stMetric {
+            background-color: #f0f2f6;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stDataFrame {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        .plot-container {
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }
+    </style>
+""", unsafe_allow_html=True)
