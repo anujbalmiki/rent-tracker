@@ -51,7 +51,7 @@ def add_transaction(date, amount, remark):
 
 # Get Transactions
 def get_transactions():
-    transactions = list(transactions_collection.find())
+    transactions = list(transactions_collection.find().sort("date", -1))
     df = pd.DataFrame(transactions)
     if not df.empty:
         df["id"] = df["_id"].apply(str)
@@ -171,6 +171,10 @@ elif page == "Add Transaction" and st.session_state.logged_in:
         if submitted:
             add_transaction(date.strftime("%Y-%m-%d"), amount, remark)
             st.success("Transaction added successfully!")
+            
+    # Get the data
+    df = get_transactions()
+    st.dataframe(df)
 
 elif page == "View Transactions":
     st.header("Transaction History")
