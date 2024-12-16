@@ -8,7 +8,7 @@ import os
 import hashlib
 
 # MongoDB connection setup
-uri = "mongodb+srv://admin:admin123@mankhurdrent.j49t7.mongodb.net/?retryWrites=true&w=majority&appName=MankhurdRent"
+uri = st.secrets["mongo"]["uri"]
 client = MongoClient(uri)
 db = client["rent_tracker"]
 transactions_collection = db["transactions"]
@@ -102,11 +102,10 @@ def update_transaction(transaction_id, new_date, new_amount, new_remark):
 
 # Delete Transaction
 def delete_transaction(transaction_id):
-    print(transaction_id)
     transactions_collection.delete_one({"_id": ObjectId(transaction_id)})
 
 # User Authentication
-USERS = {"admin": hashlib.sha256("admin123".encode()).hexdigest()}
+USERS = {st.secrets["admin"]["username"]: hashlib.sha256(st.secrets["admin"]["password"].encode()).hexdigest()}
 
 def authenticate_user(username, password):
     hashed_password = hashlib.sha256(password.encode()).hexdigest()
@@ -225,7 +224,6 @@ elif page == "View Transactions":
                             for trans in selected_transactions
                         ]
                         
-                        print(selected_ids)
                         # Perform deletion
                         for record_id in selected_ids:
                             delete_transaction(record_id)
