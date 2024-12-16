@@ -51,7 +51,7 @@ def add_transaction(date, amount, remark):
 
 # Get Transactions
 def get_transactions():
-    transactions = list(transactions_collection.find().sort("date", -1))
+    transactions = list(transactions_collection.find())
     df = pd.DataFrame(transactions)
     if not df.empty:
         df["id"] = df["_id"].apply(str)
@@ -173,7 +173,7 @@ elif page == "Add Transaction" and st.session_state.logged_in:
             
     # Get the data
     df = get_transactions()
-    st.dataframe(df)
+    st.dataframe(df.sort_values("date", ascending=False))
 
 elif page == "View Transactions":
     st.header("Transaction History")
@@ -187,7 +187,7 @@ elif page == "View Transactions":
             # Allow editing in a separate section
             st.subheader("Edit Transactions")
             edited_df = st.data_editor(
-                df,
+                df.sort_values("date", ascending=False),
                 hide_index=True,
                 key="edit_transactions_table"
             )
@@ -208,7 +208,7 @@ elif page == "View Transactions":
             
             # Create a multiselect for choosing records to delete
             transaction_options = [f"ID: {row['id']} - Date: {row['date']} - Amount: ₹{row['amount']} - {row['remark']}" 
-                                for _, row in df.iterrows()]
+                                for _, row in df.sort_values("date", ascending=False).iterrows()]
             selected_transactions = st.multiselect(
                 "Select transactions to delete:",
                 options=transaction_options
@@ -235,7 +235,7 @@ elif page == "View Transactions":
                 else:
                     st.warning("Please select at least one record to delete.")
         else:
-            st.dataframe(df)
+            st.dataframe(df.sort_values("date", ascending=False))
     else:
         st.write("No transactions available.")
     
