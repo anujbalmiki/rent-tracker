@@ -1,0 +1,42 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.pkl
+*.db
+*.sqlite3
+
+# Environment and dependencies
+.env
+.venv/
+venv/
+env/
+Pipfile
+Pipfile.lock
+poetry.lock
+
+# Streamlit specific
+.streamlit/
+# Streamlit secrets
+secrets.toml
+
+# Jupyter Notebook checkpoints (if using)
+.ipynb_checkpoints/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS generated files
+Thumbs.db
