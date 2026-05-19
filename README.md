@@ -96,20 +96,6 @@ pip install -r requirements-dev.txt
 pytest tests/ -q
 ```
 
-## Git commits (avoid extra GitHub contributors)
-
-If you use Cursor Agent to commit, it may add this line to commit messages:
-
-```
-Co-authored-by: Cursor <cursoragent@cursor.com>
-```
-
-That makes **Cursor Agent** appear in GitHub’s contributor list. To avoid it:
-
-- In **Cursor Settings**, turn off co-author attribution on commits (wording may vary by version), or  
-- Amend commits before pushing to remove the `Co-authored-by` line, or  
-- Commit yourself from the terminal with your own Git identity.
-
 ## License
 
 Private / personal use unless otherwise noted.
