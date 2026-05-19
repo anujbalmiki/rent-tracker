@@ -60,26 +60,17 @@ def inject_styles() -> None:
         """
         <style>
         [data-testid="stSidebar"] { background-color: #f7f8fa; }
-
-        /* Metric cards — parent overflow:hidden was clipping the top edge */
-        [data-testid="stMetric"] {
-            background: #fff;
-            border: 1px solid #e8eaed;
-            border-radius: 10px;
-            padding: 0.85rem 1rem 0.75rem;
-            margin-top: 0.35rem;
-            overflow: visible;
-        }
-        [data-testid="element-container"]:has([data-testid="stMetric"]),
-        [data-testid="stHorizontalBlock"],
-        [data-testid="column"] {
-            overflow: visible !important;
-        }
-        .block-container { padding-top: 2rem; overflow: visible; }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def bordered_metric(column, label: str, value: str) -> None:
+    """Metric inside Streamlit's native bordered container (works on Cloud + local)."""
+    with column:
+        with st.container(border=True):
+            st.metric(label, value)
 
 
 def table_column_config(*, editable: bool) -> dict:
@@ -193,9 +184,9 @@ def render_sidebar_actions() -> None:
 
 def render_summary(analysis: dict) -> None:
     c1, c2, c3 = st.columns(3)
-    c1.metric("Balance", format_currency(analysis["current_balance"]))
-    c2.metric("Avg rent", format_currency(analysis["avg_monthly_rent"]))
-    c3.metric("Avg light bill", format_currency(analysis["avg_light_bill"]))
+    bordered_metric(c1, "Balance", format_currency(analysis["current_balance"]))
+    bordered_metric(c2, "Avg rent", format_currency(analysis["avg_monthly_rent"]))
+    bordered_metric(c3, "Avg light bill", format_currency(analysis["avg_light_bill"]))
 
 
 def apply_transaction_edits(
@@ -358,9 +349,9 @@ def render_report() -> None:
 
     stats = analyze_transactions(report_df)
     m1, m2, m3 = st.columns(3)
-    m1.metric("Rent", format_currency(stats["total_rent"]))
-    m2.metric("Light bills", format_currency(stats["total_light_bills"]))
-    m3.metric("Payments", format_currency(stats["total_payments"]))
+    bordered_metric(m1, "Rent", format_currency(stats["total_rent"]))
+    bordered_metric(m2, "Light bills", format_currency(stats["total_light_bills"]))
+    bordered_metric(m3, "Payments", format_currency(stats["total_payments"]))
 
     shown = report_df.rename(columns=TABLE_LABELS)
     st.dataframe(shown, hide_index=True, use_container_width=True)
