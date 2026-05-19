@@ -109,7 +109,7 @@ def render_sidebar() -> str:
             "Go to",
             options=["dashboard", "report"],
             format_func=lambda k: "Dashboard" if k == "dashboard" else "Report",
-            label_visibility="collapsed",
+            key="nav_page",
         )
 
         if st.session_state.logged_in:
@@ -121,21 +121,25 @@ def render_sidebar() -> str:
 def render_login() -> None:
     if st.session_state.logged_in:
         st.success(f"Signed in as **{st.session_state.username}**")
-        if st.button("Sign out", use_container_width=True):
+        if st.button("Sign out", width="stretch"):
             st.session_state.logged_in = False
             st.session_state.username = ""
             st.rerun()
         return
 
     with st.form("login"):
-        username = st.text_input("Username", label_visibility="collapsed", placeholder="Username")
+        username = st.text_input(
+            "Username",
+            key="login_username",
+            placeholder="Username",
+        )
         password = st.text_input(
             "Password",
+            key="login_password",
             type="password",
-            label_visibility="collapsed",
             placeholder="Password",
         )
-        if st.form_submit_button("Sign in", use_container_width=True, type="primary"):
+        if st.form_submit_button("Sign in", width="stretch", type="primary"):
             if authenticate_user(username, password):
                 st.session_state.logged_in = True
                 st.session_state.username = username.strip()
@@ -149,7 +153,7 @@ def render_sidebar_actions() -> None:
             txn_date = st.date_input("Date", value=date.today(), max_value=date.today())
             amount = st.number_input("Amount (₹)", step=100.0, format="%.0f")
             remark = st.text_input("Description", placeholder="Rent, light bill, payment…")
-            if st.form_submit_button("Save", use_container_width=True, type="primary"):
+            if st.form_submit_button("Save", width="stretch", type="primary"):
                 ok, message = run_db_operation(
                     lambda: add_transaction(
                         txn_date.strftime("%Y-%m-%d"), amount, remark
@@ -165,9 +169,9 @@ def render_sidebar_actions() -> None:
 
     with st.expander("Import CSV", expanded=False):
         st.caption("Replaces all data. Columns: Date (DD-MM-YYYY), Amount, Remark.")
-        uploaded = st.file_uploader("CSV file", type=["csv"], label_visibility="collapsed")
+        uploaded = st.file_uploader("CSV file", type=["csv"], key="import_csv_file")
         confirm = st.checkbox("Replace all existing data")
-        if uploaded and confirm and st.button("Import", use_container_width=True):
+        if uploaded and confirm and st.button("Import", width="stretch"):
             result: dict[str, int] = {}
 
             def _import() -> None:
@@ -247,7 +251,7 @@ def render_dashboard() -> None:
         edited_view = st.data_editor(
             table_view,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             num_rows="fixed",
             column_config=table_column_config(editable=True),
             key="txn_editor",
@@ -255,7 +259,7 @@ def render_dashboard() -> None:
         )
         action_col, delete_col = st.columns([1, 2])
         with action_col:
-            if st.button("Save edits", type="primary", use_container_width=True):
+            if st.button("Save edits", type="primary", width="stretch"):
                 if table_view.equals(edited_view):
                     st.info("No changes to save.")
                 else:
@@ -277,7 +281,7 @@ def render_dashboard() -> None:
                 placeholder="Select to delete…",
                 label_visibility="visible",
             )
-            if st.button("Delete selected", use_container_width=True) and to_delete:
+            if st.button("Delete selected", width="stretch") and to_delete:
                 ids = [labels[x] for x in to_delete]
                 ok, msg = run_db_operation(
                     lambda: delete_transactions(ids),
@@ -293,7 +297,7 @@ def render_dashboard() -> None:
         st.dataframe(
             table_view,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             height=row_height,
         )
         st.caption("Sign in to add, edit, or import data.")
@@ -311,7 +315,7 @@ def render_dashboard() -> None:
             height=320,
             hovermode="x unified",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 
 def render_report() -> None:
@@ -324,7 +328,7 @@ def render_report() -> None:
         end = st.date_input("To", value=today, key="report_end")
     with c3:
         st.write("")
-        run = st.button("Run report", type="primary", use_container_width=True)
+        run = st.button("Run report", type="primary", width="stretch")
 
     if not run:
         st.caption("Pick a date range and run the report to see totals and download CSV.")
@@ -354,14 +358,14 @@ def render_report() -> None:
     bordered_metric(m3, "Payments", format_currency(stats["total_payments"]))
 
     shown = report_df.rename(columns=TABLE_LABELS)
-    st.dataframe(shown, hide_index=True, use_container_width=True)
+    st.dataframe(shown, hide_index=True, width="stretch")
 
     st.download_button(
         "Download CSV",
         data=report_df.to_csv(index=False),
         file_name=f"rent_report_{start}_{end}.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
 
 

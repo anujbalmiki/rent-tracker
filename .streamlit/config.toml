@@ -1,6 +1,6 @@
 [server]
 headless = true
-enableCORS = false
+# enableXsrfProtection needs CORS enabled; do not set enableCORS=false here.
 enableXsrfProtection = true
 
 [browser]
