@@ -16,10 +16,8 @@ Pipfile
 Pipfile.lock
 poetry.lock
 
-# Streamlit specific
-.streamlit/
-# Streamlit secrets
-secrets.toml
+# Streamlit secrets (keep config.toml and secrets.toml.example tracked)
+.streamlit/secrets.toml
 
 # Jupyter Notebook checkpoints (if using)
 .ipynb_checkpoints/
